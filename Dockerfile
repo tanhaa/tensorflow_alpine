@@ -1,89 +1,56 @@
-FROM alpine:3.8 as tf_build
+FROM alpine:3.8 as alpine-glibc-image
 
-ENV JAVA_HOME /usr/lib/jvm/java-1.8-openjdk
-ENV BAZEL_VERSION 0.10.0
-ENV TENSORFLOW_VERSION 1.8.0
-
-RUN true \
-    && apk upgrade --update \
-    && apk add --no-cache \
-        bash \
-        python3 \
-        freetype \
-        libpng \
-        libjpeg-turbo \
-        libstdc++ \
-        openblas \
-        libexecinfo \
-    && apk add --no-cache --virtual=build-dependencies \
-        wget \
-        curl \
-        ca-certificates \
-        unzip \
-        sed \
-        python3-dev \
-        freetype-dev \
-        libpng-dev \
-        libjpeg-turbo-dev \
-        musl-dev \
-        openblas-dev \
-        libexecinfo-dev \
-        gcc \
-        g++ \
-        make \
-        cmake \
-        swig \
-        linux-headers \
-        openjdk8 \
-        patch \
-        perl \
-        rsync \
-        zip \
-        tar \
-        gzip \
-    && rm -rf /usr/bin/python \
-    && python3 -m pip install -U --no-cache-dir \
-        pip \
-        setuptools \
-        wheel \
-        numpy \
-    && pip3 install --upgrade pip setuptools \
-    && if [ ! -e /usr/bin/pip ]; then ln -s pip3 /usr/bin/pip ; fi \
-    && if [[ ! -e /usr/bin/python ]]; then ln -sf /usr/bin/python3 /usr/bin/python; fi \
-    && cd /tmp \
-    && curl -SLO https://github.com/bazelbuild/bazel/releases/download/${BAZEL_VERSION}/bazel-${BAZEL_VERSION}-dist.zip \
-    && mkdir bazel-${BAZEL_VERSION} \
-    && unzip -qd bazel-${BAZEL_VERSION} bazel-${BAZEL_VERSION}-dist.zip \
-    && cd bazel-${BAZEL_VERSION} \
-    && sed -i -e '/"-std=c++0x"/{h;s//"-fpermissive"/;x;G}' tools/cpp/cc_configure.bzl \
-    && sed -i -e '/#endif  \/\/ COMPILER_MSVC/{h;s//#else/;G;s//#include <sys\/stat.h>/;G;}' third_party/ijar/common.h \
-    && bash compile.sh \
-    && cp -p output/bazel /usr/bin/ \
-    && cd /tmp \
-    && curl -SL https://github.com/tensorflow/tensorflow/archive/v${TENSORFLOW_VERSION}.tar.gz \
-    | tar xzf - \
-    && cd tensorflow-${TENSORFLOW_VERSION} \
-    && sed -i -e '/JEMALLOC_HAVE_SECURE_GETENV/d' third_party/jemalloc.BUILD \
-    && sed -i -e '/#define TF_GENERATE_BACKTRACE/d' tensorflow/core/platform/default/stacktrace.h \
-    && sed -i -e '/#define TF_GENERATE_STACKTRACE/d' tensorflow/core/platform/stacktrace_handler.cc \
-    && PYTHON_BIN_PATH=/usr/bin/python \
-    PYTHON_LIB_PATH=/usr/lib/python3.6/site-packages \
-    CC_OPT_FLAGS="-march=native" \
-    TF_NEED_JEMALLOC=1 \
-    TF_NEED_GCP=0 \
-    TF_NEED_HDFS=0 \
-    TF_ENABLE_XLA=0 \
-    TF_NEED_VERBS=0 \
-    TF_NEED_OPENCL=0 \
-    TF_NEED_CUDA=0 \
-    TF_NEED_MPI=0 \
-    TF_NEED_S3=0 \
-    TF_NEED_GDR=0 \
-    bash configure \
-    && bazel build --config opt --local_resources 4096,.5,1.0 //tensorflow/tools/pip_package:build_pip_package \
-    && ./bazel-bin/tensorflow/tools/pip_package/build_pip_package /tmp/tensorflow_pkg \
-    && cd \
-    && pip3 install --no-cache-dir /tmp/tensorflow_pkg/tensorflow-${TENSORFLOW_VERSION}-cp36-cp36m-linux_x86_64.whl \
-    && apk del build-dependencies \
-    && rm -f /usr/bin/bazel \
-    && rm -rf /tmp/* /root/.cache
+ENV LANG=C.UTF-8
+ENV CONDA_DIR="/opt/conda"
+ENV PATH="$CONDA_DIR/bin:$PATH"
+ENV TENSORFLOW_VERSION="1.8.0"
+# Here we install GNU libc (aka glibc) and set C.UTF-8 locale as default.
+RUN ALPINE_GLIBC_BASE_URL="https://github.com/sgerrand/alpine-pkg-glibc/releases/download" && \
+    ALPINE_GLIBC_PACKAGE_VERSION="2.27-r0" && \
+    ALPINE_GLIBC_BASE_PACKAGE_FILENAME="glibc-$ALPINE_GLIBC_PACKAGE_VERSION.apk" && \
+    ALPINE_GLIBC_BIN_PACKAGE_FILENAME="glibc-bin-$ALPINE_GLIBC_PACKAGE_VERSION.apk" && \
+    ALPINE_GLIBC_I18N_PACKAGE_FILENAME="glibc-i18n-$ALPINE_GLIBC_PACKAGE_VERSION.apk" && \
+    apk add --no-cache --virtual=.build-dependencies wget ca-certificates bash && \
+    wget \
+        "https://raw.githubusercontent.com/sgerrand/alpine-pkg-glibc/master/sgerrand.rsa.pub" \
+        -O "/etc/apk/keys/sgerrand.rsa.pub" && \
+    wget \
+        "$ALPINE_GLIBC_BASE_URL/$ALPINE_GLIBC_PACKAGE_VERSION/$ALPINE_GLIBC_BASE_PACKAGE_FILENAME" \
+        "$ALPINE_GLIBC_BASE_URL/$ALPINE_GLIBC_PACKAGE_VERSION/$ALPINE_GLIBC_BIN_PACKAGE_FILENAME" \
+        "$ALPINE_GLIBC_BASE_URL/$ALPINE_GLIBC_PACKAGE_VERSION/$ALPINE_GLIBC_I18N_PACKAGE_FILENAME" && \
+    apk add --no-cache \
+        "$ALPINE_GLIBC_BASE_PACKAGE_FILENAME" \
+        "$ALPINE_GLIBC_BIN_PACKAGE_FILENAME" \
+        "$ALPINE_GLIBC_I18N_PACKAGE_FILENAME" && \
+    \
+    rm "/etc/apk/keys/sgerrand.rsa.pub" && \
+    /usr/glibc-compat/bin/localedef --force --inputfile POSIX --charmap UTF-8 "$LANG" || true && \
+    echo "export LANG=$LANG" > /etc/profile.d/locale.sh && \
+    \
+    apk del glibc-i18n && \
+    \
+    rm "/root/.wget-hsts" && \
+    rm \
+        "$ALPINE_GLIBC_BASE_PACKAGE_FILENAME" \
+        "$ALPINE_GLIBC_BIN_PACKAGE_FILENAME" \
+        "$ALPINE_GLIBC_I18N_PACKAGE_FILENAME" && \
+    CONDA_VERSION="4.5.4" && \
+    CONDA_MD5_CHECKSUM="a946ea1d0c4a642ddf0c3a26a18bb16d" && \
+    \
+    mkdir -p "$CONDA_DIR" && \
+    wget "http://repo.continuum.io/miniconda/Miniconda3-${CONDA_VERSION}-Linux-x86_64.sh" -O miniconda.sh && \
+    echo "$CONDA_MD5_CHECKSUM  miniconda.sh" | md5sum -c && \
+    bash miniconda.sh -f -b -p "$CONDA_DIR" && \
+    echo "export PATH=$CONDA_DIR/bin:\$PATH" > /etc/profile.d/conda.sh && \
+    rm miniconda.sh && \
+    \
+    conda update --all --yes && \
+    conda config --set auto_update_conda False && \
+    rm -r "$CONDA_DIR/pkgs/" && \
+    \
+    apk del --purge .build-dependencies && \
+    \
+    mkdir -p "$CONDA_DIR/locks" && \
+    chmod 777 "$CONDA_DIR/locks" && \
+    pip install --upgrade pip && \
+    pip install tensorflow==${TENSORFLOW_VERSION}
