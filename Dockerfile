@@ -50,6 +50,8 @@ RUN ALPINE_GLIBC_BASE_URL="https://github.com/sgerrand/alpine-pkg-glibc/releases
     \
     apk del --purge .build-dependencies && \
     \
+    rm -rf /root/.cache && \
+    \
     mkdir -p "$CONDA_DIR/locks" && \
     chmod 777 "$CONDA_DIR/locks" && \
     pip install --upgrade pip && \
