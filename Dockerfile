@@ -3,7 +3,7 @@ FROM alpine:3.8 as alpine-glibc-image
 ENV LANG=C.UTF-8
 ENV CONDA_DIR="/opt/conda"
 ENV PATH="$CONDA_DIR/bin:$PATH"
-ENV TENSORFLOW_VERSION="1.8.0"
+ENV TENSORFLOW_VERSION="1.9.0"
 # Here we install GNU libc (aka glibc) and set C.UTF-8 locale as default.
 RUN ALPINE_GLIBC_BASE_URL="https://github.com/sgerrand/alpine-pkg-glibc/releases/download" && \
     ALPINE_GLIBC_PACKAGE_VERSION="2.27-r0" && \
